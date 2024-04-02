@@ -21,4 +21,6 @@ class Authorize(StatesGroup):
 class MainMenu(StatesGroup):
     mainMenu = State()
     selectCabinet = State()
+    selectDateExcel = State()
+    selectedDateExcel = State()
     waitExcel = State()

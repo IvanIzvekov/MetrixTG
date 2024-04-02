@@ -127,7 +127,7 @@ def select_MP():
 def main_keyboard():
     buttons = [[
         KeyboardButton(
-            text='Добавить ежедневный отчет'
+            text='Добавить еженедельный отчет'
         ),
         KeyboardButton(
             text='Добавить кабинет'
@@ -171,6 +171,35 @@ def all_cabinets(cabinets):
                 text=cabinet
             )
         )
+    if len(two_buttons) % 2 != 0:
+        buttons.append(two_buttons)
+    buttons.append(
+        [
+            KeyboardButton(
+                text='Назад в меню'
+            )
+        ]
+    )
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+
+    return keyboard
+
+
+def select_date(dates):
+    buttons = []
+    for date in dates:
+        buttons.append(
+            [
+                KeyboardButton(
+                    text=date
+                )
+            ]
+        )
+    buttons = buttons[::-1]
     buttons.append(
         [
             KeyboardButton(

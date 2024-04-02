@@ -1,9 +1,10 @@
+import io
 from datetime import datetime
 from aiogram import Router, F
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.types import Message, InlineKeyboardMarkup, CallbackQuery, ReplyKeyboardRemove, ReplyKeyboardMarkup, \
-    FSInputFile
+    FSInputFile, ContentType
 
 from Bot.keyboards.main_keyboards import *
 from Bot.states.user_info_states import *
@@ -29,8 +30,16 @@ async def main_menu(message: Message, state: FSMContext):
         reply_markup=main_keyboard())
 
 
-@router.message(Cabinet.startCreateCabinet, F.text == "Добавить ежедневный отчет")
+@router.message(Cabinet.startCreateCabinet, F.text == "Добавить еженедельный отчет")
 async def every_day_report(message: Message, state: FSMContext):
+    user_data = await state.get_data()
+    send_log(tg_id=message.from_user.id,
+             tg_username=message.from_user.username,
+             phone=str(user_data["phone_number"]),
+             is_client=True if "client_id" in user_data else False,
+             tg_command="every_day_report",
+             input_data=message.text)
+
     user_data = await state.get_data()
     cabinets = await find_cabinets(user_data['client_id'])
     await state.set_state(MainMenu.selectCabinet)
@@ -53,19 +62,100 @@ async def select_cabinet(message: Message, state: FSMContext):
                                   "либо воспользуйтесь клавиатурой ниже", reply_markup=ReplyKeyboardRemove())
         await every_day_report(message, state)
     else:
-        await state.set_state(MainMenu.waitExcel)
-        # try:
-        #     await message.bot.delete_message(chat_id=message.chat.id, message_id=message.message_id - 1)
-        #     # await message.bot.edit_message_reply_markup(chat_id=message.chat.id, message_id=message.message_id - 1, reply_markup=back_to_main_keyboard())
-        # except Exception:
-        #     pass
-        await message.answer(text="Отправьте отчет в виде Excel файла", reply_markup=back_to_main_keyboard())
-        await message.answer(text="Инструкция о том, где найти файл отчета:", reply_markup=help_exel())
+        user_data = await state.get_data()
+        send_log(tg_id=message.from_user.id,
+                 tg_username=message.from_user.username,
+                 phone=str(user_data["phone_number"]),
+                 is_client=True if user_data["client_id"] else False,
+                 tg_command="select_cabinet",
+                 input_data=message.text)
+        await state.update_data(cabinet_name=message.text)
+        await state.set_state(MainMenu.selectDateExcel)
+        cabinet_name = message.text
+        await message.answer(text="Смотрим возможные даты для загрузки отчета...")
+        await message.answer(text="Выберите дату отчета из предложенных ниже",
+                             reply_markup=select_date(gen_date_excel(cabinet_name)))
+        await state.set_state(MainMenu.selectedDateExcel)
+
+
+@router.message(MainMenu.selectedDateExcel)
+async def selected_date_excel(message: Message, state: FSMContext):
+    user_data = await state.get_data()
+    all_dates_invalid = gen_date_excel(user_data["cabinet_name"])
+    all_dates = [i[16:] for i in all_dates_invalid]
+    if len(message.text) == 26:
+        if message.text[16:] not in all_dates:
+            await message.answer(text="Такая дата отчета не существует, пожалуйста введите дату отчета из приведенных ниже")
+            return
+    else:
+        await message.answer(text="Такая дата отчета не существует, пожалуйста введите дату отчета из приведенных ниже")
+        return
+    await state.update_data(dateExcel=message.text)
+
+    send_log(tg_id=message.from_user.id,
+             tg_username=message.from_user.username,
+             phone=str(user_data["phone_number"]),
+             is_client=True if user_data["client_id"] else False,
+             tg_command="select_data_excel",
+             input_data=message.text)
+
+    await message.answer(text=f"Выбранная дата - {message.text}", reply_markup=back_to_main_keyboard())
+    await state.set_state(MainMenu.waitExcel)
+    await message.answer(text="Отправьте отчет в виде архива с одним Excel файлом\n По одному архиву за раз")
+
+
+@router.message(MainMenu.waitExcel, F.content_type == ContentType.DOCUMENT)
+async def wait_excel(message: Message, state: FSMContext):
+    # if len(message.attachments) > 1:
+    #     await message.answer(text="Пожалуйста, отправьте отчет в виде архива с одним Excel файлом\n"
+    #                               "В данном случае файлов больше одного")
+    #     return
+    user_data = await state.get_data()
+    await state.update_data(file_id=message.document.file_id)
+    file_id = message.document.file_id
+    file_name = message.document.file_name
+    if file_name[-5:] == ".xlsx":
+        await message.answer(
+            text="Отправьте .zip архив, который вы скачали с личного кабинета, не изменяя названия содержимого")
+    elif file_name[-4:] == ".xls":
+        await message.answer(
+            text="Отправьте .zip архив, который вы скачали с личного кабинета, не изменяя названия содержимого")
+    elif file_name[-4:] == ".zip":
+        try:
+            os.mkdir(f'reports/{user_data["client_id"]}')
+        except FileExistsError:
+            await message.answer(text="Пожалуйста, отправьте только один архив с отчетом")
+            return
+        await message.bot.download(file_id, f'reports/{user_data["client_id"]}/{user_data["client_id"]}.zip')
+        if await read_excel_wb_zip(
+                "reports/" + str(user_data["client_id"]) + "/" + str(user_data["client_id"]) + ".zip",
+                user_data["client_id"],
+                file_name,
+                user_data['cabinet_name'],
+                date_to=user_data['dateExcel']):
+            await message.answer(text="Отчет успешно добавлен")
+            await main_menu(message, state)
+        else:
+            await message.answer(text=f"Произошла ошибка, убедитесь, что вы выбрали верный файл, "
+                                      f"в случае, если вы уверены, что все делаете верно, свяжитесь с менеджером "
+                                      f"@{env('MANAGER_CHAT_ID')}")
+    else:
+        await message.answer(text="Данный файл не поддерживается, попробуйте снова, но с другим файлом, "
+                                  f"в случае, если вы уверены, что все делаете верно, свяжитесь с менеджером "
+                                  f"@{env('MANAGER_CHAT_ID')}")
 
 
 ############################### Авторизация и начало создания кабинета ################################
 @router.message(Command('start'))
 async def cmd_start(message: Message, state: FSMContext):
+    user_data = await state.get_data()
+    send_log(tg_id=message.from_user.id,
+             tg_username=message.from_user.username,
+             phone=user_data["phone_number"] if "phone_number" in user_data else "",
+             is_client=True if "client_id" in user_data else False,
+             tg_command="start",
+             input_data="/start")
+
     await message.answer(text=f'Привет!👋\n\n'
                               f'На связи <b>бот-помощник Metrix</b> - это удобный инструмент для продавцов '
                               f'Wildberries, объединяющий складской учет, товарную, рекламную и финансовую '
@@ -96,6 +186,14 @@ async def get_phone(message: Message, state: FSMContext):
 
     client_id_check, client_tg_id = await check_client_number(message.contact.phone_number)
     if client_id_check == "":
+
+        send_log(tg_id=message.from_user.id,
+                 tg_username=message.from_user.username,
+                 phone=message.contact.phone_number,
+                 is_client=None,
+                 tg_command="get_phone",
+                 input_data=str(message.contact.phone_number))
+
         await state.set_state(Cabinet.startCreateCabinet)
         await message.answer(text=f'Для начала нужно добавить кабинет', reply_markup=add_cabinet_keyboard())
     else:
@@ -107,6 +205,14 @@ async def get_phone(message: Message, state: FSMContext):
 
 @router.message(Cabinet.startCreateCabinet, F.text == "Добавить кабинет")
 async def selectMP(message: Message, state: FSMContext):
+    user_data = await state.get_data()
+    send_log(tg_id=message.from_user.id,
+             tg_username=message.from_user.username,
+             phone=str(user_data["phone_number"]),
+             is_client=True if user_data["client_id"] else False,
+             tg_command="selectMP",
+             input_data="Добавить кабинет")
+
     await state.set_state(Cabinet.selectMP)
     await message.answer(text="Кабинет какого маркетплейса вы хотите добавить?", reply_markup=select_MP())
 
@@ -135,6 +241,15 @@ async def check_cabinet_name(message: Message, state: FSMContext):
     if client_id != "":
         if await check_unic_cabinet(message.text, client_id):
             await state.update_data(cabinet_name=message.text)
+
+            user_data = await state.get_data()
+            send_log(tg_id=message.from_user.id,
+                     tg_username=message.from_user.username,
+                     phone=str(user_data["phone_number"]),
+                     is_client=True,
+                     tg_command="check_cabinet_name",
+                     input_data=user_data["cabinet_name"])
+
             if user_data["mp"] == "Wildberries":
                 await state.set_state(Cabinet.wbTokenStat)
                 await wb_tokens_stat(message, state)
@@ -145,6 +260,13 @@ async def check_cabinet_name(message: Message, state: FSMContext):
             await message.answer(text="У вас уже существует кабинет с таким названием, введите другое")
     else:
         await state.update_data(cabinet_name=message.text)
+        user_data = await state.get_data()
+        send_log(tg_id=message.from_user.id,
+                 tg_username=message.from_user.username,
+                 phone=str(user_data["phone_number"]),
+                 is_client=False,
+                 tg_command="check_cabinet_name",
+                 input_data=user_data["cabinet_name"])
         if user_data["mp"] == "Wildberries":
             await state.set_state(Cabinet.wbTokenStat)
             await wb_tokens_stat(message, state)
@@ -160,6 +282,15 @@ async def wb_token_stat_check(message: Message, state: FSMContext):
     if not has_cyrillic(message.text):
         if await check_token_request(message.text, "Wildberries"):
             await state.update_data(token_stat=message.text)
+
+            user_data = await state.get_data()
+            send_log(tg_id=message.from_user.id,
+                     tg_username=message.from_user.username,
+                     phone=str(user_data["phone_number"]),
+                     is_client=True if "client_id" in user_data else False,
+                     tg_command="wb_token_stat_check",
+                     input_data=user_data["token_stat"])
+
             await wb_tokens_promo(message, state)
         else:
             await message.answer(text="Некорректный токен, попробуйте снова",
@@ -184,6 +315,15 @@ async def wb_token_promo_check(message: Message, state: FSMContext):
     if not has_cyrillic(message.text):
         if await check_token_request(message.text, "Wildberries", promotion=True):
             await state.update_data(token_promo=message.text)
+
+            user_data = await state.get_data()
+            send_log(tg_id=message.from_user.id,
+                     tg_username=message.from_user.username,
+                     phone=str(user_data["phone_number"]),
+                     is_client=True if "client_id" in user_data else False,
+                     tg_command="wb_token_promo_check",
+                     input_data=user_data["token_promo"])
+
             await success_tokens(message, state)
         else:
             await message.answer(text="Некорректный токен, попробуйте снова",
@@ -220,6 +360,15 @@ async def ozon_id_check(message: Message, state: FSMContext):
         user_data = await state.get_data()
         if await check_token_request(user_data["ozon_seller_token"], "Ozon", ozon_id=message.text):
             await state.update_data(ozon_id=message.text)
+
+            user_data = await state.get_data()
+            send_log(tg_id=message.from_user.id,
+                     tg_username=message.from_user.username,
+                     phone=str(user_data["phone_number"]),
+                     is_client=True if "client_id" in user_data else False,
+                     tg_command="ozon_token_and_id_check",
+                     input_data=message.text)
+
             await success_tokens(message, state)
         else:
             await message.answer(text="Некорректный ID или токен, попробуйте снова.\nВведите токен Ozon",
@@ -307,6 +456,15 @@ async def success_tokens(message: Message, state: FSMContext):
 async def input_gmail(message: Message, state: FSMContext):
     if message.text.find("@gmail.com") != -1:
         await state.update_data(gmail=message.text)
+
+        user_data = await state.get_data()
+        send_log(tg_id=message.from_user.id,
+                 tg_username=message.from_user.username,
+                 phone=str(user_data["phone_number"]),
+                 is_client=True if "client_id" in user_data else False,
+                 tg_command="input_gmail",
+                 input_data=message.text)
+
         await state.set_state(Cabinet.final)
         await final(message, state)
     else:
