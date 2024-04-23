@@ -1,18 +1,12 @@
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup, KeyboardButton, ReplyKeyboardMarkup
 
 
-def help_exel():
+def help_exel_keyboard():
     buttons = [
         [
             InlineKeyboardButton(
                 text='Как получить отчет с Wildberries?',
                 callback_data="help_wb_report"
-            )
-        ],
-        [
-            InlineKeyboardButton(
-                text='Как получить отчет с Ozon?',
-                callback_data="help_ozon_report"
             )
         ]
     ]
@@ -125,18 +119,26 @@ def select_MP():
 
 
 def main_keyboard():
-    buttons = [[
-        KeyboardButton(
-            text='Добавить еженедельный отчет'
-        ),
-        KeyboardButton(
-            text='Добавить кабинет'
-        )
-    ]]
+    buttons = [
+        [
+            KeyboardButton(
+                text='Добавить еженедельный отчет'
+            ),
+            KeyboardButton(
+                text='Добавить кабинет'
+            )
+        ],
+        [
+            KeyboardButton(
+                text='Изменить токены'
+            ),
+            KeyboardButton(
+                text='Написать в тех. поддержку'
+            )
+        ]]
     keyboard = ReplyKeyboardMarkup(
         keyboard=buttons,
-        resize_keyboard=True,
-        one_time_keyboard=True
+        resize_keyboard=True
     )
 
     return keyboard
@@ -161,18 +163,20 @@ def back_to_main_keyboard():
 
 def all_cabinets(cabinets):
     buttons = []
-    two_buttons = []
+    count = 0
     for cabinet in cabinets['cabinet_name']:
-        if len(two_buttons) == 2:
-            buttons.append(two_buttons)
-            two_buttons = []
-        two_buttons.append(
-            KeyboardButton(
-                text=cabinet
-            )
+        if cabinets['mp'][count] == "WB":
+            text = cabinet + " (WB)"
+        else:
+            text = cabinet + " (OZON)"
+        buttons.append(
+            [
+                KeyboardButton(
+                    text=text
+                )
+            ]
         )
-    if len(two_buttons) % 2 != 0:
-        buttons.append(two_buttons)
+        count += 1
     buttons.append(
         [
             KeyboardButton(
@@ -189,7 +193,7 @@ def all_cabinets(cabinets):
     return keyboard
 
 
-def select_date(dates):
+def select_date(dates, is_admin=False):
     buttons = []
     for date in dates:
         buttons.append(
@@ -200,17 +204,128 @@ def select_date(dates):
             ]
         )
     buttons = buttons[::-1]
-    buttons.append(
-        [
-            KeyboardButton(
-                text='Назад в меню'
-            )
-        ]
-    )
+    if not is_admin:
+        buttons.append(
+            [
+                KeyboardButton(
+                    text='Назад в меню'
+                )
+            ]
+        )
+    else:
+        buttons.append(
+            [
+                KeyboardButton(
+                    text='/start'
+                )
+            ]
+        )
     keyboard = ReplyKeyboardMarkup(
         keyboard=buttons,
         resize_keyboard=True,
         one_time_keyboard=True
     )
 
+    return keyboard
+
+
+def turnover_keyboard():
+    buttons = [
+        [
+            KeyboardButton(
+                text='Менее 300 тыс. руб.'
+            ),
+            KeyboardButton(
+                text='300 - 500 тыс. руб.'
+            )
+        ],
+        [
+            KeyboardButton(
+                text='500 - 1 000 тыс. руб.'
+            ),
+            KeyboardButton(
+                text='1 000 - 2 000 тыс. руб.'
+            )
+        ],
+        [
+            KeyboardButton(
+                text='Свыше 2 000 тыс. руб.'
+            )
+        ]
+    ]
+    keyboard = ReplyKeyboardMarkup(
+        keyboard=buttons,
+        resize_keyboard=True,
+        one_time_keyboard=True
+    )
+
+    return keyboard
+
+
+def quarter_keyboard():
+    buttons = [
+        [
+            KeyboardButton(
+                text='(2022-12-26 - 2023-04-02)'
+            ),
+            KeyboardButton(
+                text='(2023-04-03 - 2023-07-02)'
+            )
+        ],
+        [
+            KeyboardButton(
+                text='(2023-07-03 - 2023-10-01)'
+            ),
+            KeyboardButton(
+                text='(2023-10-02 - 2023-12-31)'
+            )
+        ],
+        [
+            KeyboardButton(
+                text='(2024-01-01 - 2024-01-28)'
+            )
+        ]
+    ]
+    keyboard = ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
+    return keyboard
+
+
+def wb_token_select_keyboard():
+    buttons = [
+        [
+            KeyboardButton(
+                text='Статистика'
+            ),
+            KeyboardButton(
+                text='Продвижение'
+            )
+        ],
+        [
+            KeyboardButton(
+                text='Назад в меню'
+            )
+        ]
+    ]
+    keyboard = ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
+    return keyboard
+
+
+def ozon_token_select_keyboard():
+    buttons = [
+        [
+            KeyboardButton(
+                text='Seller API'
+            )
+            # ,
+            # KeyboardButton(
+            #     text='Performance API'
+            # )
+        ],
+        [
+            KeyboardButton(
+                text='Назад в меню'
+            )
+        ]
+    ]
+    keyboard = ReplyKeyboardMarkup(keyboard=buttons, resize_keyboard=True, one_time_keyboard=True)
     return keyboard
